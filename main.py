@@ -1,60 +1,132 @@
-def calculate_electricity_split():
-    print("--- Electricity Bill Splitter ---\n")
+import streamlit as st
+import pandas as pd
 
-    # --- INPUTS ---
-    # You can hardcode these if your rates never change
-    try:
-        unit_rate = float(input("Enter electricity unit rate (e.g., 0.28 for 28p/kWh): "))
-        standing_charge_daily = float(input("Enter daily standing charge (e.g., 0.45 for 45p/day): "))
-        bill_days = int(input("Enter number of days in this billing period: "))
-        
-        total_kwh_usage = float(input("Enter TOTAL kWh usage for the flat: "))
-        pc_kwh_usage = float(input("Enter YOUR PC's kWh usage (from Tapo app): "))
-    except ValueError:
-        print("\nError: Please enter valid numbers.")
-        return
+# --- PAGE CONFIGURATION ---
+st.set_page_config(page_title="Fair Bill Splitter", page_icon="⚡")
 
-    # --- CALCULATIONS ---
-    
-    # 1. Calculate the fixed costs (Standing Charge)
-    total_standing_charge_cost = standing_charge_daily * bill_days
+# --- HEADER ---
+st.title("⚡ Electricity Bill Splitter")
+st.markdown("""
+This tool separates your specific **PC usage** from the shared household bill.
+Everyone pays 50/50 for the shared electricity and standing charges, 
+but you pay 100% of your gaming PC's consumption.
+""")
 
-    # 2. Calculate the energy costs
-    # Note: We calculate total energy cost based on usage * rate
-    total_energy_cost = total_kwh_usage * unit_rate
-    
-    # 3. Calculate specific cost of the PC
-    pc_cost = pc_kwh_usage * unit_rate
+st.markdown("---")
 
-    # 4. Calculate the Total Bill Calculation
-    # (Standing Charge + All Energy)
-    calculated_total_bill = total_standing_charge_cost + total_energy_cost
+# --- SIDEBAR INPUTS ---
+st.sidebar.header("1. Bill Details")
+unit_rate = st.sidebar.number_input(
+    "Unit Rate (Price per kWh)", 
+    min_value=0.0, 
+    value=0.28, 
+    format="%.4f",
+    help="Check your bill for the unit rate (usually in £ or $)."
+)
 
-    # 5. Determine the "Shared" portion
-    # The shared portion is the Total Bill minus the specific PC cost you are responsible for
-    shared_cost = calculated_total_bill - pc_cost
+standing_charge_daily = st.sidebar.number_input(
+    "Daily Standing Charge", 
+    min_value=0.0, 
+    value=0.45, 
+    format="%.4f",
+    help="The fixed daily cost for electricity connection."
+)
 
-    # 6. The Split
-    # Girlfriend pays half of the shared cost
-    girlfriend_pay = shared_cost / 2
-    
-    # You pay half the shared cost PLUS the full PC cost
-    your_pay = (shared_cost / 2) + pc_cost
+bill_days = st.sidebar.number_input(
+    "Billing Period (Days)", 
+    min_value=1, 
+    value=30, 
+    step=1
+)
 
-    # --- OUTPUT ---
-    print("\n" + "="*30)
-    print(f"💰 BILL BREAKDOWN")
-    print("="*30)
-    print(f"Total Bill (Calculated):  £{calculated_total_bill:.2f}")
-    print(f"  - Standing Charge:      £{total_standing_charge_cost:.2f}")
-    print(f"  - Total Energy Cost:    £{total_energy_cost:.2f}")
-    print("-" * 30)
-    print(f"🖥️  YOUR PC COST:         £{pc_cost:.2f}")
-    print(f"🏠 SHARED COST:          £{shared_cost:.2f}")
-    print("="*30)
-    print(f"👉 YOU PAY:               £{your_pay:.2f}")
-    print(f"👉 GIRLFRIEND PAYS:       £{girlfriend_pay:.2f}")
-    print("="*30)
+st.sidebar.header("2. Usage Data")
+total_kwh_usage = st.sidebar.number_input(
+    "Total Flat Usage (kWh)", 
+    min_value=0.0, 
+    value=250.0, 
+    step=1.0,
+    help="The total kWh used by the entire flat (from your bill)."
+)
 
-if __name__ == "__main__":
-    calculate_electricity_split()
+pc_kwh_usage = st.sidebar.number_input(
+    "PC Usage (kWh)", 
+    min_value=0.0, 
+    value=50.0, 
+    step=1.0,
+    help="The kWh used by your PC (from your Tapo app)."
+)
+
+# --- VALIDATION ---
+if pc_kwh_usage > total_kwh_usage:
+    st.error("⚠️ Error: PC usage cannot be higher than total flat usage!")
+    st.stop()
+
+# --- CALCULATIONS ---
+# 1. Costs
+total_standing_charge_cost = standing_charge_daily * bill_days
+total_energy_cost_bill = total_kwh_usage * unit_rate
+calculated_total_bill = total_standing_charge_cost + total_energy_cost_bill
+
+# 2. PC Specifics
+pc_cost = pc_kwh_usage * unit_rate
+
+# 3. Shared Specifics
+# Shared Energy Cost = Total Energy Cost - PC Cost
+# Shared Total = Shared Energy Cost + Standing Charge
+shared_energy_cost = total_energy_cost_bill - pc_cost
+shared_total_cost = shared_energy_cost + total_standing_charge_cost
+
+# 4. The Split
+girlfriend_pay = shared_total_cost / 2
+your_pay = (shared_total_cost / 2) + pc_cost
+
+# --- RESULTS DISPLAY ---
+
+# Create columns for the big numbers
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric(label="Total Bill", value=f"£{calculated_total_bill:.2f}")
+
+with col2:
+    st.metric(label="You Pay", value=f"£{your_pay:.2f}", delta=f"Includes £{pc_cost:.2f} PC cost")
+
+with col3:
+    st.metric(label="Girlfriend Pays", value=f"£{girlfriend_pay:.2f}")
+
+st.markdown("---")
+
+# --- DETAILED BREAKDOWN ---
+st.subheader("📊 Detailed Breakdown")
+
+# Create a dataframe for the table
+data = {
+    "Description": ["Standing Charge", "Shared Electricity", "PC Electricity (Yours)", "TOTAL"],
+    "Cost": [
+        f"£{total_standing_charge_cost:.2f}",
+        f"£{shared_energy_cost:.2f}",
+        f"£{pc_cost:.2f}",
+        f"**£{calculated_total_bill:.2f}**"
+    ],
+    "Who Pays?": ["Split 50/50", "Split 50/50", "You (100%)", "-"]
+}
+df = pd.DataFrame(data)
+st.table(df)
+
+# --- VISUALIZATION ---
+# Simple bar chart to visualize the split
+st.subheader("💸 Payment Split Visualized")
+chart_data = pd.DataFrame({
+    'Person': ['You', 'Girlfriend'],
+    'Amount (£)': [your_pay, girlfriend_pay]
+})
+st.bar_chart(chart_data.set_index('Person'))
+
+# --- EXPLANATION TEXT ---
+st.info(f"""
+**Logic Check:**
+* The total bill is calculated as **£{calculated_total_bill:.2f}**.
+* Your PC cost **£{pc_cost:.2f}** ({pc_kwh_usage} kWh x £{unit_rate:.2f}).
+* This is subtracted from the total, leaving **£{shared_total_cost:.2f}** as the 'shared' household cost.
+* You both split the shared cost (£{shared_total_cost/2:.2f} each), and you add your PC cost on top.
+""")
